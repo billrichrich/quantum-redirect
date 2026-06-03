@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
 const dns = require('dns');
-const axios = require('axios');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');

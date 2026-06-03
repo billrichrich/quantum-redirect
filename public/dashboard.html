@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantum Redirect Panel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root { --quantum: #667eea; --quantum-dark: #764ba2; }
+    body { background: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+    .sidebar { width: 280px; background: linear-gradient(135deg, var(--quantum) 0%, var(--quantum-dark) 100%); min-height: 100vh; position: fixed; top: 0; left: 0; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.85); padding: 12px 24px; margin: 4px 0; transition: all 0.3s; cursor: pointer; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: rgba(255,255,255,0.15); color: white; }
+    .sidebar .nav-link i { width: 24px; margin-right: 12px; }
+    .content { margin-left: 280px; padding: 24px; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 24px; }
+    .card-header { background: transparent; border-bottom: 1px solid #eef2f7; padding: 16px 24px; font-weight: 600; font-size: 18px; }
+    .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .stat-number { font-size: 36px; font-weight: bold; color: var(--quantum); }
+    .stat-label { color: #666; margin-top: 8px; font-size: 14px; }
+    .btn-quantum { background: linear-gradient(135deg, var(--quantum), var(--quantum-dark)); border: none; color: white; padding: 10px 24px; }
+    .btn-quantum:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
+    .domain-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .domain-verified { background: #d4edda; color: #155724; }
+    .domain-pending { background: #fff3cd; color: #856404; }
+    .generated-url-item { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-family: monospace; font-size: 12px; word-break: break-all; border-left: 3px solid var(--quantum); }
+    .token-item { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .verification-instruction { background: #e7f3ff; border-left: 4px solid #2196F3; padding: 16px; border-radius: 8px; margin-top: 16px; }
+    code { background: #f1f3f4; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="p-4">
+    <h4 class="text-white mb-2"><i class="fas fa-atom"></i> Quantum Shield</h4>
+    <small class="text-white-50">Professional Redirect Panel</small>
+  </div>
+  <nav class="nav flex-column">
+    <a class="nav-link active" onclick="showSection('overview')"><i class="fas fa-chart-line"></i> Dashboard</a>
+    <a class="nav-link" onclick="showSection('domains')"><i class="fas fa-globe"></i> Domains</a>
+    <a class="nav-link" onclick="showSection('generate')"><i class="fas fa-link"></i> Generate URLs</a>
+    <a class="nav-link" onclick="showSection('rules')"><i class="fas fa-shield-alt"></i> Redirect Rules</a>
+    <a class="nav-link" onclick="showSection('logs')"><i class="fas fa-history"></i> Click Logs</a>
+  </nav>
+  <div class="position-absolute bottom-0 p-4 w-100">
+    <hr class="text-white-50">
+    <a href="/logout" class="text-white text-decoration-none"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Dashboard Section -->
+  <div id="overviewSection">
+    <div class="row" id="statsRow">
+      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statDomains">0</div><div class="stat-label">Verified Domains</div></div></div>
+      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statRules">0</div><div class="stat-label">Redirect Rules</div></div></div>
+      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statClicks">0</div><div class="stat-label">Total Clicks</div></div></div>
+      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statLogs">0</div><div class="stat-label">Total Logs</div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="fas fa-info-circle"></i> Quick Start Guide</div>
+      <div class="card-body">
+        <ol>
+          <li><strong>Add a domain</strong> - Go to Domains section and add your domain</li>
+          <li><strong>Verify ownership</strong> - Add the provided TXT record to your DNS</li>
+          <li><strong>Create redirect rule</strong> - Set your target URL and choose style</li>
+          <li><strong>Generate URLs</strong> - Create working redirect links</li>
+          <li><strong>Deploy to server</strong> - Point your domain to this server with SSL</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- Domains Section -->
+  <div id="domainsSection" style="display:none">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-plus-circle"></i> Add New Domain</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-8">
+            <input type="text" id="newDomain" class="form-control" placeholder="yourdomain.com (without https://)">
+            <small class="text-muted">Enter the domain you own (e.g., redirect.yourdomain.com)</small>
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-quantum w-100" onclick="addDomain()">Add Domain</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="fas fa-list"></i> Your Domains</div>
+      <div class="card-body">
+        <div id="domainsList">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generate URLs Section -->
+  <div id="generateSection" style="display:none">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-cog"></i> Generate Redirect URLs</div>
+      <div class="card-body">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Select Verified Domain</label>
+            <select id="selectDomain" class="form-control" onchange="loadSubdomainField()">
+              <option value="">-- Select Domain --</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Subdomain (Optional)</label>
+            <input type="text" id="subdomain" class="form-control" placeholder="links / secure / go">
+            <small class="text-muted">Leave empty to use root domain</small>
+          </div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Target URL (Destination)</label>
+            <input type="text" id="targetUrl" class="form-control" placeholder="https://your-destination.com">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Bot Redirect URL (Optional)</label>
+            <input type="text" id="botRedirectUrl" class="form-control" placeholder="https://google.com">
+            <small class="text-muted">Where to send detected bots</small>
+          </div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Redirect Style</label>
+            <select id="redirectStyle" class="form-control">
+              <option value="cisco">🔒 Cisco Umbrella (Long URL)</option>
+              <option value="proofpoint-v2">🛡️ Proofpoint V2 URL Defense</option>
+              <option value="proofpoint-v3">🛡️ Proofpoint V3 URL Defense</option>
+              <option value="safelinks">📧 Microsoft SafeLinks</option>
+              <option value="barracuda">🐟 Barracuda Link Protect</option>
+              <option value="long">📊 Long SEO / Shodan Style</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Number of URLs</label>
+            <input type="number" id="urlCount" class="form-control" value="1" min="1" max="20">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">&nbsp;</label>
+            <button class="btn btn-quantum w-100" onclick="generateUrls()"><i class="fas fa-bolt"></i> Generate URLs</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="fas fa-list"></i> Generated URLs</div>
+      <div class="card-body">
+        <div id="generatedUrlsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Redirect Rules Section -->
+  <div id="rulesSection" style="display:none">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-shield-alt"></i> Active Redirect Rules</div>
+      <div class="card-body">
+        <div id="rulesList">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logs Section -->
+  <div id="logsSection" style="display:none">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-chart-bar"></i> Click Logs</div>
+      <div class="card-body">
+        <div id="logsList">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentDomainId = null;
+
+function showSection(section) {
+  document.getElementById('overviewSection').style.display = 'none';
+  document.getElementById('domainsSection').style.display = 'none';
+  document.getElementById('generateSection').style.display = 'none';
+  document.getElementById('rulesSection').style.display = 'none';
+  document.getElementById('logsSection').style.display = 'none';
+  
+  if (section === 'overview') document.getElementById('overviewSection').style.display = 'block';
+  if (section === 'domains') { document.getElementById('domainsSection').style.display = 'block'; loadDomains(); }
+  if (section === 'generate') { document.getElementById('generateSection').style.display = 'block'; loadDomainsSelect(); }
+  if (section === 'rules') { document.getElementById('rulesSection').style.display = 'block'; loadRules(); }
+  if (section === 'logs') { document.getElementById('logsSection').style.display = 'block'; loadLogs(); }
+  
+  if (section === 'overview') loadStats();
+  
+  // Update active state
+  document.querySelectorAll('.sidebar .nav-link').forEach(link => link.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    document.getElementById('statDomains').innerText = data.domains || 0;
+    document.getElementById('statRules').innerText = data.rules || 0;
+    document.getElementById('statClicks').innerText = data.clicks || 0;
+    document.getElementById('statLogs').innerText = data.logs || 0;
+  } catch(e) { console.error(e); }
+}
+
+async function addDomain() {
+  const domain = document.getElementById('newDomain').value;
+  if (!domain) return alert('Enter a domain');
+  
+  const res = await fetch('/api/domains', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain })
+  });
+  
+  const data = await res.json();
+  if (res.ok) {
+    alert('Domain added! Please verify it by adding this TXT record to your DNS:\n\n' + data.verification_token);
+    document.getElementById('newDomain').value = '';
+    loadDomains();
+    loadDomainsSelect();
+  } else {
+    alert('Error: ' + data.error);
+  }
+}
+
+async function loadDomains() {
+  try {
+    const res = await fetch('/api/domains');
+    const domains = await res.json();
+    
+    if (domains.length === 0) {
+      document.getElementById('domainsList').innerHTML = '<div class="alert alert-info">No domains added yet. Add your first domain above.</div>';
+      return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr><th>Domain</th><th>Status</th><th>Verification Token</th><th>Actions</th></tr></thead><tbody>';
+    for (const d of domains) {
+      const statusClass = d.verified ? 'domain-verified' : 'domain-pending';
+      const statusText = d.verified ? '✓ Verified' : '⏳ Pending Verification';
+      html += `<tr>
+        <td><strong>${d.domain}</strong></td>
+        <td><span class="domain-badge ${statusClass}">${statusText}</span></td>
+        <td><code>${d.verification_token || '-'}</code></td>
+        <td>`;
+      if (!d.verified) {
+        html += `<button class="btn btn-sm btn-warning me-2" onclick="verifyDomain(${d.id})">Verify Now</button>`;
+      }
+      html += `<button class="btn btn-sm btn-danger" onclick="deleteDomain(${d.id})">Delete</button></td></tr>`;
+    }
+    html += '</tbody></table></div>';
+    document.getElementById('domainsList').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+async function verifyDomain(id) {
+  const res = await fetch(`/api/domains/${id}/verify`, { method: 'POST' });
+  const data = await res.json();
+  
+  if (data.verified) {
+    alert('✅ Domain verified successfully! You can now generate redirect URLs.');
+    loadDomains();
+    loadDomainsSelect();
+  } else {
+    alert('❌ Verification failed. Make sure you added the TXT record to your DNS and wait a few minutes for propagation.');
+  }
+}
+
+async function deleteDomain(id) {
+  if (confirm('Delete this domain? All redirect rules will also be deleted.')) {
+    await fetch('/api/domains/' + id, { method: 'DELETE' });
+    loadDomains();
+    loadDomainsSelect();
+  }
+}
+
+async function loadDomainsSelect() {
+  try {
+    const res = await fetch('/api/domains');
+    const domains = await res.json();
+    const verifiedDomains = domains.filter(d => d.verified === 1);
+    
+    let html = '<option value="">-- Select Domain --</option>';
+    for (const d of verifiedDomains) {
+      html += `<option value="${d.id}" data-domain="${d.domain}">${d.domain} ✓</option>`;
+    }
+    document.getElementById('selectDomain').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+function loadSubdomainField() {
+  const select = document.getElementById('selectDomain');
+  const selectedOption = select.options[select.selectedIndex];
+  if (selectedOption && selectedOption.value) {
+    currentDomainId = selectedOption.value;
+  }
+}
+
+async function generateUrls() {
+  const domainId = document.getElementById('selectDomain').value;
+  const subdomain = document.getElementById('subdomain').value;
+  const targetUrl = document.getElementById('targetUrl').value;
+  const botRedirect = document.getElementById('botRedirectUrl').value;
+  const style = document.getElementById('redirectStyle').value;
+  const count = parseInt(document.getElementById('urlCount').value);
+  
+  if (!domainId) return alert('Select a verified domain');
+  if (!targetUrl) return alert('Enter target URL');
+  
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain_id: domainId, subdomain, target_url: targetUrl, bot_redirect: botRedirect, style, count })
+  });
+  
+  const data = await res.json();
+  if (data.urls && data.urls.length > 0) {
+    let html = '';
+    for (let i = 0; i < data.urls.length; i++) {
+      const safeUrl = data.urls[i].replace(/'/g, "\\'");
+      html += `<div class="generated-url-item">
+        <strong>URL #${i+1}</strong> <span class="badge bg-secondary">${style}</span><br>
+        <code>${data.urls[i]}</code><br>
+        <button class="btn btn-sm btn-success mt-2" onclick="copyToClipboard('${safeUrl}')"><i class="fas fa-copy"></i> Copy</button>
+        <button class="btn btn-sm btn-info mt-2 ms-2" onclick="window.open('${safeUrl}', '_blank')"><i class="fas fa-external-link-alt"></i> Test</button>
+      </div>`;
+    }
+    document.getElementById('generatedUrlsList').innerHTML = html;
+    loadStats();
+    loadRules();
+  } else {
+    alert('Error generating URLs');
+  }
+}
+
+async function loadRules() {
+  try {
+    const res = await fetch('/api/rules');
+    const rules = await res.json();
+    
+    if (rules.length === 0) {
+      document.getElementById('rulesList').innerHTML = '<div class="alert alert-info">No redirect rules yet. Generate some URLs first.</div>';
+      return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-hover"><thead><tr><th>Domain</th><th>Target URL</th><th>Clicks</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+    for (const r of rules) {
+      html += `<tr>
+        <td><strong>${r.full_domain}</strong></td>
+        <td><small>${r.target_url.substring(0, 60)}...</small></td>
+        <td>${r.clicks || 0} (${r.unique_clicks || 0} unique)</td>
+        <td>${new Date(r.created_at).toLocaleDateString()}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteRule(${r.id})">Delete</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    document.getElementById('rulesList').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+async function deleteRule(id) {
+  if (confirm('Delete this redirect rule?')) {
+    await fetch('/api/rules/' + id, { method: 'DELETE' });
+    loadRules();
+    loadStats();
+  }
+}
+
+async function loadLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    const logs = await res.json();
+    
+    if (logs.length === 0) {
+      document.getElementById('logsList').innerHTML = '<div class="alert alert-info">No logs yet. Click on generated URLs to see activity.</div>';
+      return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Domain</th><th>IP Address</th><th>Bot?</th><th>User Agent</th><th>Time</th></tr></thead><tbody>';
+    for (const l of logs) {
+      const botClass = l.is_bot ? 'bg-danger' : 'bg-success';
+      const botText = l.is_bot ? 'Bot' : 'Human';
+      html += `<tr>
+        <td><small>${l.full_domain || '-'}</small></td>
+        <td><code>${l.ip || '-'}</code></td>
+        <td><span class="badge ${botClass}">${botText}</span></td>
+        <td><small>${(l.user_agent || '').substring(0, 50)}...</small></td>
+        <td><small>${new Date(l.created_at).toLocaleString()}</small></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    document.getElementById('logsList').innerHTML = html;
+  } catch(e) { console.error(e); }
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text);
+  alert('URL copied to clipboard!');
+}
+
+loadStats();
+</script>
+</body>
+</html>

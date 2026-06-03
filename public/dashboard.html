@@ -3,64 +3,274 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quantum Redirect Panel</title>
+  <title>Quantum Redirect Panel - Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    :root { --quantum: #667eea; --quantum-dark: #764ba2; }
-    body { background: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
-    .sidebar { width: 280px; background: linear-gradient(135deg, var(--quantum) 0%, var(--quantum-dark) 100%); min-height: 100vh; position: fixed; top: 0; left: 0; }
-    .sidebar .nav-link { color: rgba(255,255,255,0.85); padding: 12px 24px; margin: 4px 0; transition: all 0.3s; cursor: pointer; }
-    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: rgba(255,255,255,0.15); color: white; }
-    .sidebar .nav-link i { width: 24px; margin-right: 12px; }
-    .content { margin-left: 280px; padding: 24px; }
-    .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 24px; }
-    .card-header { background: transparent; border-bottom: 1px solid #eef2f7; padding: 16px 24px; font-weight: 600; font-size: 18px; }
-    .stat-card { background: white; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .stat-number { font-size: 36px; font-weight: bold; color: var(--quantum); }
-    .stat-label { color: #666; margin-top: 8px; font-size: 14px; }
-    .btn-quantum { background: linear-gradient(135deg, var(--quantum), var(--quantum-dark)); border: none; color: white; padding: 10px 24px; }
-    .btn-quantum:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
-    .domain-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; }
-    .domain-verified { background: #d4edda; color: #155724; }
-    .domain-pending { background: #fff3cd; color: #856404; }
-    .generated-url-item { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-family: monospace; font-size: 12px; word-break: break-all; border-left: 3px solid var(--quantum); }
-    .token-item { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-    .verification-instruction { background: #e7f3ff; border-left: 4px solid #2196F3; padding: 16px; border-radius: 8px; margin-top: 16px; }
-    code { background: #f1f3f4; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background: #f0f2f5;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      transition: all 0.3s;
+      z-index: 1000;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .sidebar .brand {
+      padding: 25px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 20px;
+    }
+    
+    .sidebar .brand h3 {
+      color: white;
+      margin: 0;
+      font-weight: 600;
+    }
+    
+    .sidebar .brand p {
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      margin: 5px 0 0;
+    }
+    
+    .sidebar .nav-item {
+      padding: 12px 25px;
+      margin: 5px 0;
+      cursor: pointer;
+      transition: all 0.3s;
+      color: rgba(255,255,255,0.85);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .sidebar .nav-item:hover {
+      background: rgba(255,255,255,0.15);
+      color: white;
+    }
+    
+    .sidebar .nav-item.active {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border-right: 3px solid white;
+    }
+    
+    .sidebar .nav-item i {
+      width: 24px;
+      font-size: 18px;
+    }
+    
+    /* Main Content */
+    .main-content {
+      margin-left: 280px;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    
+    /* Cards */
+    .card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-bottom: 24px;
+      transition: transform 0.2s;
+    }
+    
+    .card:hover {
+      transform: translateY(-2px);
+    }
+    
+    .card-header {
+      background: transparent;
+      border-bottom: 1px solid #eef2f7;
+      padding: 18px 24px;
+      font-weight: 600;
+      font-size: 18px;
+    }
+    
+    .stat-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      transition: transform 0.2s;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-3px);
+    }
+    
+    .stat-number {
+      font-size: 36px;
+      font-weight: bold;
+      color: #667eea;
+    }
+    
+    .stat-label {
+      color: #666;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    
+    .btn-quantum {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+    
+    .btn-quantum:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+      color: white;
+    }
+    
+    .domain-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .domain-verified {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .domain-pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+    
+    .generated-url-item {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+      border-left: 3px solid #667eea;
+    }
+    
+    .table-responsive {
+      overflow-x: auto;
+    }
+    
+    .table th {
+      background: #f8f9fa;
+      font-weight: 600;
+    }
+    
+    .alert-info {
+      background: #e7f3ff;
+      border: none;
+      color: #0066cc;
+    }
+    
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 70px;
+      }
+      .sidebar .brand h3, .sidebar .brand p {
+        display: none;
+      }
+      .sidebar .nav-item span {
+        display: none;
+      }
+      .sidebar .nav-item i {
+        margin: 0 auto;
+      }
+      .main-content {
+        margin-left: 70px;
+      }
+    }
   </style>
 </head>
 <body>
 
+<!-- Sidebar -->
 <div class="sidebar">
-  <div class="p-4">
-    <h4 class="text-white mb-2"><i class="fas fa-atom"></i> Quantum Shield</h4>
-    <small class="text-white-50">Professional Redirect Panel</small>
+  <div class="brand">
+    <h3>⚡ Quantum</h3>
+    <p>Redirect Shield</p>
   </div>
-  <nav class="nav flex-column">
-    <a class="nav-link active" onclick="showSection('overview')"><i class="fas fa-chart-line"></i> Dashboard</a>
-    <a class="nav-link" onclick="showSection('domains')"><i class="fas fa-globe"></i> Domains</a>
-    <a class="nav-link" onclick="showSection('generate')"><i class="fas fa-link"></i> Generate URLs</a>
-    <a class="nav-link" onclick="showSection('rules')"><i class="fas fa-shield-alt"></i> Redirect Rules</a>
-    <a class="nav-link" onclick="showSection('logs')"><i class="fas fa-history"></i> Click Logs</a>
-  </nav>
-  <div class="position-absolute bottom-0 p-4 w-100">
-    <hr class="text-white-50">
-    <a href="/logout" class="text-white text-decoration-none"><i class="fas fa-sign-out-alt"></i> Logout</a>
+  <div class="nav-item active" onclick="showSection('overview')">
+    <i class="fas fa-chart-line"></i> <span>Dashboard</span>
+  </div>
+  <div class="nav-item" onclick="showSection('domains')">
+    <i class="fas fa-globe"></i> <span>Domains</span>
+  </div>
+  <div class="nav-item" onclick="showSection('generate')">
+    <i class="fas fa-link"></i> <span>Generate URLs</span>
+  </div>
+  <div class="nav-item" onclick="showSection('rules')">
+    <i class="fas fa-shield-alt"></i> <span>Redirect Rules</span>
+  </div>
+  <div class="nav-item" onclick="showSection('logs')">
+    <i class="fas fa-history"></i> <span>Click Logs</span>
+  </div>
+  <div class="nav-item" onclick="window.location.href='/logout'">
+    <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
   </div>
 </div>
 
-<div class="content">
-  <!-- Dashboard Section -->
+<!-- Main Content -->
+<div class="main-content">
+  <!-- Dashboard Overview Section -->
   <div id="overviewSection">
     <div class="row" id="statsRow">
-      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statDomains">0</div><div class="stat-label">Verified Domains</div></div></div>
-      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statRules">0</div><div class="stat-label">Redirect Rules</div></div></div>
-      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statClicks">0</div><div class="stat-label">Total Clicks</div></div></div>
-      <div class="col-md-3 mb-3"><div class="stat-card"><div class="stat-number" id="statLogs">0</div><div class="stat-label">Total Logs</div></div></div>
+      <div class="col-md-3 mb-3">
+        <div class="stat-card">
+          <div class="stat-number" id="statDomains">0</div>
+          <div class="stat-label">Verified Domains</div>
+        </div>
+      </div>
+      <div class="col-md-3 mb-3">
+        <div class="stat-card">
+          <div class="stat-number" id="statRules">0</div>
+          <div class="stat-label">Redirect Rules</div>
+        </div>
+      </div>
+      <div class="col-md-3 mb-3">
+        <div class="stat-card">
+          <div class="stat-number" id="statClicks">0</div>
+          <div class="stat-label">Total Clicks</div>
+        </div>
+      </div>
+      <div class="col-md-3 mb-3">
+        <div class="stat-card">
+          <div class="stat-number" id="statLogs">0</div>
+          <div class="stat-label">Total Logs</div>
+        </div>
+      </div>
     </div>
+    
     <div class="card">
-      <div class="card-header"><i class="fas fa-info-circle"></i> Quick Start Guide</div>
+      <div class="card-header">
+        <i class="fas fa-info-circle"></i> Quick Start Guide
+      </div>
       <div class="card-body">
         <ol>
           <li><strong>Add a domain</strong> - Go to Domains section and add your domain</li>
@@ -76,7 +286,9 @@
   <!-- Domains Section -->
   <div id="domainsSection" style="display:none">
     <div class="card">
-      <div class="card-header"><i class="fas fa-plus-circle"></i> Add New Domain</div>
+      <div class="card-header">
+        <i class="fas fa-plus-circle"></i> Add New Domain
+      </div>
       <div class="card-body">
         <div class="row">
           <div class="col-md-8">
@@ -89,8 +301,11 @@
         </div>
       </div>
     </div>
+    
     <div class="card">
-      <div class="card-header"><i class="fas fa-list"></i> Your Domains</div>
+      <div class="card-header">
+        <i class="fas fa-list"></i> Your Domains
+      </div>
       <div class="card-body">
         <div id="domainsList">Loading...</div>
       </div>
@@ -100,12 +315,14 @@
   <!-- Generate URLs Section -->
   <div id="generateSection" style="display:none">
     <div class="card">
-      <div class="card-header"><i class="fas fa-cog"></i> Generate Redirect URLs</div>
+      <div class="card-header">
+        <i class="fas fa-cog"></i> Generate Redirect URLs
+      </div>
       <div class="card-body">
         <div class="row mb-3">
           <div class="col-md-6">
             <label class="form-label fw-bold">Select Verified Domain</label>
-            <select id="selectDomain" class="form-control" onchange="loadSubdomainField()">
+            <select id="domainSelect" class="form-control">
               <option value="">-- Select Domain --</option>
             </select>
           </div>
@@ -115,6 +332,7 @@
             <small class="text-muted">Leave empty to use root domain</small>
           </div>
         </div>
+        
         <div class="row mb-3">
           <div class="col-md-6">
             <label class="form-label fw-bold">Target URL (Destination)</label>
@@ -126,6 +344,7 @@
             <small class="text-muted">Where to send detected bots</small>
           </div>
         </div>
+        
         <div class="row mb-3">
           <div class="col-md-4">
             <label class="form-label fw-bold">Redirect Style</label>
@@ -149,8 +368,11 @@
         </div>
       </div>
     </div>
+    
     <div class="card">
-      <div class="card-header"><i class="fas fa-list"></i> Generated URLs</div>
+      <div class="card-header">
+        <i class="fas fa-list"></i> Generated URLs
+      </div>
       <div class="card-body">
         <div id="generatedUrlsList"></div>
       </div>
@@ -160,7 +382,9 @@
   <!-- Redirect Rules Section -->
   <div id="rulesSection" style="display:none">
     <div class="card">
-      <div class="card-header"><i class="fas fa-shield-alt"></i> Active Redirect Rules</div>
+      <div class="card-header">
+        <i class="fas fa-shield-alt"></i> Active Redirect Rules
+      </div>
       <div class="card-body">
         <div id="rulesList">Loading...</div>
       </div>
@@ -170,7 +394,9 @@
   <!-- Logs Section -->
   <div id="logsSection" style="display:none">
     <div class="card">
-      <div class="card-header"><i class="fas fa-chart-bar"></i> Click Logs</div>
+      <div class="card-header">
+        <i class="fas fa-chart-bar"></i> Click Logs
+      </div>
       <div class="card-body">
         <div id="logsList">Loading...</div>
       </div>
@@ -181,26 +407,43 @@
 <script>
 let currentDomainId = null;
 
+// Show selected section
 function showSection(section) {
+  // Hide all sections
   document.getElementById('overviewSection').style.display = 'none';
   document.getElementById('domainsSection').style.display = 'none';
   document.getElementById('generateSection').style.display = 'none';
   document.getElementById('rulesSection').style.display = 'none';
   document.getElementById('logsSection').style.display = 'none';
   
-  if (section === 'overview') document.getElementById('overviewSection').style.display = 'block';
-  if (section === 'domains') { document.getElementById('domainsSection').style.display = 'block'; loadDomains(); }
-  if (section === 'generate') { document.getElementById('generateSection').style.display = 'block'; loadDomainsSelect(); }
-  if (section === 'rules') { document.getElementById('rulesSection').style.display = 'block'; loadRules(); }
-  if (section === 'logs') { document.getElementById('logsSection').style.display = 'block'; loadLogs(); }
-  
-  if (section === 'overview') loadStats();
+  // Show selected section
+  if (section === 'overview') {
+    document.getElementById('overviewSection').style.display = 'block';
+    loadStats();
+  }
+  if (section === 'domains') {
+    document.getElementById('domainsSection').style.display = 'block';
+    loadDomains();
+  }
+  if (section === 'generate') {
+    document.getElementById('generateSection').style.display = 'block';
+    loadDomainsForSelect();
+  }
+  if (section === 'rules') {
+    document.getElementById('rulesSection').style.display = 'block';
+    loadRules();
+  }
+  if (section === 'logs') {
+    document.getElementById('logsSection').style.display = 'block';
+    loadLogs();
+  }
   
   // Update active state
-  document.querySelectorAll('.sidebar .nav-link').forEach(link => link.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.sidebar .nav-item').forEach(item => item.classList.remove('active'));
+  event.target.closest('.nav-item').classList.add('active');
 }
 
+// Load statistics
 async function loadStats() {
   try {
     const res = await fetch('/api/stats');
@@ -209,11 +452,14 @@ async function loadStats() {
     document.getElementById('statRules').innerText = data.rules || 0;
     document.getElementById('statClicks').innerText = data.clicks || 0;
     document.getElementById('statLogs').innerText = data.logs || 0;
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Stats error:', e);
+  }
 }
 
+// Add domain
 async function addDomain() {
-  const domain = document.getElementById('newDomain').value;
+  const domain = document.getElementById('newDomain').value.trim();
   if (!domain) return alert('Enter a domain');
   
   const res = await fetch('/api/domains', {
@@ -224,15 +470,16 @@ async function addDomain() {
   
   const data = await res.json();
   if (res.ok) {
-    alert('Domain added! Please verify it by adding this TXT record to your DNS:\n\n' + data.verification_token);
+    alert('Domain added! Please add this TXT record to your DNS:\n\n' + data.verification_token + '\n\nThen click Verify Now.');
     document.getElementById('newDomain').value = '';
     loadDomains();
-    loadDomainsSelect();
+    loadDomainsForSelect();
   } else {
     alert('Error: ' + data.error);
   }
 }
 
+// Load domains list
 async function loadDomains() {
   try {
     const res = await fetch('/api/domains');
@@ -250,18 +497,22 @@ async function loadDomains() {
       html += `<tr>
         <td><strong>${d.domain}</strong></td>
         <td><span class="domain-badge ${statusClass}">${statusText}</span></td>
-        <td><code>${d.verification_token || '-'}</code></td>
+        <td><code style="font-size: 11px;">${d.verification_token || '-'}</code></td>
         <td>`;
       if (!d.verified) {
         html += `<button class="btn btn-sm btn-warning me-2" onclick="verifyDomain(${d.id})">Verify Now</button>`;
       }
-      html += `<button class="btn btn-sm btn-danger" onclick="deleteDomain(${d.id})">Delete</button></td></tr>`;
+      html += `<button class="btn btn-sm btn-danger" onclick="deleteDomain(${d.id})">Delete</button></td>
+      </tr>`;
     }
-    html += '</tbody></table></div>';
+    html += '</tbody></td></div>';
     document.getElementById('domainsList').innerHTML = html;
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Load domains error:', e);
+  }
 }
 
+// Verify domain
 async function verifyDomain(id) {
   const res = await fetch(`/api/domains/${id}/verify`, { method: 'POST' });
   const data = await res.json();
@@ -269,44 +520,48 @@ async function verifyDomain(id) {
   if (data.verified) {
     alert('✅ Domain verified successfully! You can now generate redirect URLs.');
     loadDomains();
-    loadDomainsSelect();
+    loadDomainsForSelect();
+    loadStats();
   } else {
-    alert('❌ Verification failed. Make sure you added the TXT record to your DNS and wait a few minutes for propagation.');
+    alert('❌ ' + data.message);
   }
 }
 
+// Delete domain
 async function deleteDomain(id) {
   if (confirm('Delete this domain? All redirect rules will also be deleted.')) {
     await fetch('/api/domains/' + id, { method: 'DELETE' });
     loadDomains();
-    loadDomainsSelect();
+    loadDomainsForSelect();
+    loadStats();
   }
 }
 
-async function loadDomainsSelect() {
+// Load domains for dropdown
+async function loadDomainsForSelect() {
   try {
     const res = await fetch('/api/domains');
     const domains = await res.json();
-    const verifiedDomains = domains.filter(d => d.verified === 1);
+    const verifiedDomains = domains.filter(d => d.verified === true);
     
     let html = '<option value="">-- Select Domain --</option>';
     for (const d of verifiedDomains) {
-      html += `<option value="${d.id}" data-domain="${d.domain}">${d.domain} ✓</option>`;
+      html += `<option value="${d.id}">✓ ${d.domain}</option>`;
     }
-    document.getElementById('selectDomain').innerHTML = html;
-  } catch(e) { console.error(e); }
-}
-
-function loadSubdomainField() {
-  const select = document.getElementById('selectDomain');
-  const selectedOption = select.options[select.selectedIndex];
-  if (selectedOption && selectedOption.value) {
-    currentDomainId = selectedOption.value;
+    
+    if (verifiedDomains.length === 0) {
+      html += '<option value="" disabled>No verified domains yet. Add and verify a domain first.</option>';
+    }
+    
+    document.getElementById('domainSelect').innerHTML = html;
+  } catch(e) {
+    console.error('Load domains for select error:', e);
   }
 }
 
+// Generate URLs
 async function generateUrls() {
-  const domainId = document.getElementById('selectDomain').value;
+  const domainId = document.getElementById('domainSelect').value;
   const subdomain = document.getElementById('subdomain').value;
   const targetUrl = document.getElementById('targetUrl').value;
   const botRedirect = document.getElementById('botRedirectUrl').value;
@@ -319,7 +574,14 @@ async function generateUrls() {
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domain_id: domainId, subdomain, target_url: targetUrl, bot_redirect: botRedirect, style, count })
+    body: JSON.stringify({ 
+      domain_id: domainId, 
+      subdomain, 
+      target_url: targetUrl, 
+      bot_redirect: botRedirect, 
+      style, 
+      count 
+    })
   });
   
   const data = await res.json();
@@ -329,19 +591,20 @@ async function generateUrls() {
       const safeUrl = data.urls[i].replace(/'/g, "\\'");
       html += `<div class="generated-url-item">
         <strong>URL #${i+1}</strong> <span class="badge bg-secondary">${style}</span><br>
-        <code>${data.urls[i]}</code><br>
-        <button class="btn btn-sm btn-success mt-2" onclick="copyToClipboard('${safeUrl}')"><i class="fas fa-copy"></i> Copy</button>
-        <button class="btn btn-sm btn-info mt-2 ms-2" onclick="window.open('${safeUrl}', '_blank')"><i class="fas fa-external-link-alt"></i> Test</button>
+        <code style="font-size: 12px;">${data.urls[i]}</code><br>
+        <button class="btn btn-sm btn-success mt-2" onclick="copyToClipboard('${safeUrl}')"><i class="fas fa-copy"></i> Copy URL</button>
+        <button class="btn btn-sm btn-info mt-2 ms-2" onclick="window.open('${safeUrl}', '_blank')"><i class="fas fa-external-link-alt"></i> Test URL</button>
       </div>`;
     }
     document.getElementById('generatedUrlsList').innerHTML = html;
     loadStats();
     loadRules();
   } else {
-    alert('Error generating URLs');
+    alert('Error generating URLs: ' + (data.error || 'Unknown error'));
   }
 }
 
+// Load redirect rules
 async function loadRules() {
   try {
     const res = await fetch('/api/rules');
@@ -356,17 +619,20 @@ async function loadRules() {
     for (const r of rules) {
       html += `<tr>
         <td><strong>${r.full_domain}</strong></td>
-        <td><small>${r.target_url.substring(0, 60)}...</small></td>
-        <td>${r.clicks || 0} (${r.unique_clicks || 0} unique)</td>
+        <td><small>${r.target_url ? r.target_url.substring(0, 60) : '-'}...</small></td>
+        <td>${r.clicks || 0}</td>
         <td>${new Date(r.created_at).toLocaleDateString()}</td>
         <td><button class="btn btn-sm btn-danger" onclick="deleteRule(${r.id})">Delete</button></td>
       </tr>`;
     }
     html += '</tbody></table></div>';
     document.getElementById('rulesList').innerHTML = html;
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Load rules error:', e);
+  }
 }
 
+// Delete redirect rule
 async function deleteRule(id) {
   if (confirm('Delete this redirect rule?')) {
     await fetch('/api/rules/' + id, { method: 'DELETE' });
@@ -375,6 +641,7 @@ async function deleteRule(id) {
   }
 }
 
+// Load click logs
 async function loadLogs() {
   try {
     const res = await fetch('/api/logs');
@@ -388,26 +655,31 @@ async function loadLogs() {
     let html = '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Domain</th><th>IP Address</th><th>Bot?</th><th>User Agent</th><th>Time</th></tr></thead><tbody>';
     for (const l of logs) {
       const botClass = l.is_bot ? 'bg-danger' : 'bg-success';
-      const botText = l.is_bot ? 'Bot' : 'Human';
+      const botText = l.is_bot ? 'Bot Detected' : 'Human';
       html += `<tr>
         <td><small>${l.full_domain || '-'}</small></td>
         <td><code>${l.ip || '-'}</code></td>
         <td><span class="badge ${botClass}">${botText}</span></td>
-        <td><small>${(l.user_agent || '').substring(0, 50)}...</small></td>
+        <td><small>${(l.user_agent || '').substring(0, 40)}...</small></td>
         <td><small>${new Date(l.created_at).toLocaleString()}</small></td>
       </tr>`;
     }
     html += '</tbody></table></div>';
     document.getElementById('logsList').innerHTML = html;
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error('Load logs error:', e);
+  }
 }
 
+// Copy to clipboard
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text);
   alert('URL copied to clipboard!');
 }
 
+// Initial load
 loadStats();
+loadDomainsForSelect();
 </script>
 </body>
 </html>

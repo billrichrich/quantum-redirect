@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Quantum Redirect Panel - Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .login-card {
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+      backdrop-filter: blur(10px);
+      background: rgba(255,255,255,0.95);
+    }
+    .quantum-icon {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .quantum-icon i { font-size: 30px; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-md-5">
+        <div class="card login-card p-4">
+          <div class="quantum-icon">
+            <i class="fas fa-shield-alt"></i>
+          </div>
+          <h3 class="text-center mb-2">Quantum Redirect Panel</h3>
+          <p class="text-center text-muted mb-4">Professional Redirect Management System</p>
+          
+          <form method="POST" action="/login">
+            <div class="mb-3">
+              <label class="form-label">Username or Email</label>
+              <input type="text" name="username" class="form-control" placeholder="admin" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Password</label>
+              <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+            </div>
+            <button class="btn btn-primary w-100 py-2" style="background: linear-gradient(135deg, #667eea, #764ba2); border: none;">Login</button>
+          </form>
+          
+          <div class="text-center mt-4">
+            <small class="text-muted">Demo Credentials: admin / Quantum2024!</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

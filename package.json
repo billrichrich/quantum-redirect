@@ -12,6 +12,8 @@
     "bcryptjs": "^2.4.3",
     "express-session": "^1.17.3",
     "connect-sqlite3": "^0.9.13",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^6.10.0"
   }
 }

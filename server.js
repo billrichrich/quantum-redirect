@@ -115,30 +115,41 @@ initDB();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration - FIXED FOR RENDER
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'quantum_secret_key',
+  name: 'quantum.sid',
+  secret: process.env.SESSION_SECRET || 'quantum_secret_2024_secure_key_' + crypto.randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
-  cookie: { 
+  cookie: {
     secure: false,
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: 'lax'
   }
 }));
 
-// ============ DOMAIN VERIFICATION FUNCTION (FIXED) ============
+// Debug middleware
+app.use((req, res, next) => {
+  if (req.path === '/api/check-session') {
+    return next();
+  }
+  if (req.path.startsWith('/api/')) {
+    console.log(`[${req.method}] ${req.path} - Session UserId: ${req.session?.userId || 'none'}`);
+  }
+  next();
+});
+
+// ============ DOMAIN VERIFICATION FUNCTIONS ============
 
 async function verifyDomainDNS(domain, token) {
   try {
     console.log(`Checking TXT records for: ${domain}`);
     const records = await resolveTxt(domain);
-    console.log(`Found ${records.length} TXT record sets`);
-    
-    // Flatten all records
     const allRecords = records.flat();
-    console.log('All TXT records:', allRecords);
+    console.log('TXT records found:', allRecords);
     
-    // Check if any record contains the token
     const hasToken = allRecords.some(record => {
       const recordStr = Array.isArray(record) ? record.join('') : record;
       return recordStr.includes(token) || recordStr.includes(token.replace('quantum-verify=', ''));
@@ -258,6 +269,16 @@ function getCloakedPage(targetUrl, ruleId) {
 
 // ============ ROUTES ============
 
+// Debug session check
+app.get('/api/check-session', (req, res) => {
+  res.json({ 
+    loggedIn: !!req.session.userId, 
+    userId: req.session.userId,
+    username: req.session.username,
+    sessionId: req.session.id 
+  });
+});
+
 // Serve login page
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -272,18 +293,23 @@ app.post('/login', async (req, res) => {
     if (user && bcrypt.compareSync(password, user.password)) {
       req.session.userId = user.id;
       req.session.username = user.username;
+      console.log(`User logged in: ${username} (ID: ${user.id})`);
       res.redirect('/dashboard.html');
     } else {
       res.send('<script>alert("Invalid credentials"); window.location.href="/login";</script>');
     }
   } catch (err) {
+    console.error('Login error:', err);
     res.status(500).send('Login error');
   }
 });
 
 // Serve dashboard
 app.get('/dashboard.html', (req, res) => {
-  if (!req.session.userId) return res.redirect('/login');
+  if (!req.session.userId) {
+    console.log('Dashboard access denied - not logged in');
+    return res.redirect('/login');
+  }
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
@@ -295,8 +321,16 @@ app.get('/logout', (req, res) => {
 
 // ============ API ROUTES ============
 
-app.get('/api/domains', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json([]);
+// Check if user is authenticated for API
+const requireAuth = (req, res, next) => {
+  if (!req.session.userId) {
+    console.log('API unauthorized - no session');
+    return res.status(401).json({ error: 'Unauthorized - Please login first' });
+  }
+  next();
+};
+
+app.get('/api/domains', requireAuth, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM domains WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId]);
     res.json(result.rows);
@@ -305,8 +339,7 @@ app.get('/api/domains', async (req, res) => {
   }
 });
 
-app.post('/api/domains', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+app.post('/api/domains', requireAuth, async (req, res) => {
   const { domain } = req.body;
   const token = generateVerificationToken(domain);
   try {
@@ -318,10 +351,7 @@ app.post('/api/domains', async (req, res) => {
   }
 });
 
-// Verify domain - FIXED VERSION
-app.post('/api/domains/:id/verify', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  
+app.post('/api/domains/:id/verify', requireAuth, async (req, res) => {
   try {
     const domainResult = await pool.query('SELECT * FROM domains WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
     const domain = domainResult.rows[0];
@@ -341,7 +371,7 @@ app.post('/api/domains/:id/verify', async (req, res) => {
     } else {
       res.json({ 
         verified: false, 
-        message: 'Verification failed. Make sure you added this exact TXT record to your DNS:\n\n' + domain.verification_token + '\n\nWait 5-10 minutes for DNS propagation, then try again.' 
+        message: 'Verification failed. Make sure you added this exact TXT record to your DNS:\n\n' + domain.verification_token 
       });
     }
   } catch (err) {
@@ -350,8 +380,7 @@ app.post('/api/domains/:id/verify', async (req, res) => {
   }
 });
 
-app.delete('/api/domains/:id', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+app.delete('/api/domains/:id', requireAuth, async (req, res) => {
   try {
     await pool.query('DELETE FROM domains WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
     res.json({ success: true });
@@ -360,9 +389,7 @@ app.delete('/api/domains/:id', async (req, res) => {
   }
 });
 
-app.post('/api/generate', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-  
+app.post('/api/generate', requireAuth, async (req, res) => {
   const { domain_id, subdomain, target_url, style, count } = req.body;
   
   try {
@@ -420,8 +447,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-app.get('/api/rules', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json([]);
+app.get('/api/rules', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT r.*, d.domain as parent_domain 
@@ -436,8 +462,7 @@ app.get('/api/rules', async (req, res) => {
   }
 });
 
-app.delete('/api/rules/:id', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+app.delete('/api/rules/:id', requireAuth, async (req, res) => {
   try {
     await pool.query('DELETE FROM redirect_rules WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
     res.json({ success: true });
@@ -446,8 +471,7 @@ app.delete('/api/rules/:id', async (req, res) => {
   }
 });
 
-app.get('/api/stats', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json({});
+app.get('/api/stats', requireAuth, async (req, res) => {
   try {
     const domains = await pool.query('SELECT COUNT(*) as count FROM domains WHERE user_id = $1 AND verified = TRUE', [req.session.userId]);
     const rules = await pool.query('SELECT COUNT(*) as count FROM redirect_rules WHERE user_id = $1', [req.session.userId]);
@@ -462,8 +486,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-app.get('/api/logs', async (req, res) => {
-  if (!req.session.userId) return res.status(401).json([]);
+app.get('/api/logs', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT l.*, r.full_domain, r.target_url

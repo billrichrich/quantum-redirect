@@ -4,6 +4,9 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
+const dns = require('dns');
+const { promisify } = require('util');
+const resolveTxt = promisify(dns.resolveTxt);
 require('dotenv').config();
 
 const app = express();
@@ -117,11 +120,46 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: { 
-    secure: false,  // Set to false for Render (since it handles SSL)
+    secure: false,
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
+
+// ============ DOMAIN VERIFICATION FUNCTION (FIXED) ============
+
+async function verifyDomainDNS(domain, token) {
+  try {
+    console.log(`Checking TXT records for: ${domain}`);
+    const records = await resolveTxt(domain);
+    console.log(`Found ${records.length} TXT record sets`);
+    
+    // Flatten all records
+    const allRecords = records.flat();
+    console.log('All TXT records:', allRecords);
+    
+    // Check if any record contains the token
+    const hasToken = allRecords.some(record => {
+      const recordStr = Array.isArray(record) ? record.join('') : record;
+      return recordStr.includes(token) || recordStr.includes(token.replace('quantum-verify=', ''));
+    });
+    
+    if (hasToken) {
+      console.log(`✅ Token found for ${domain}`);
+    } else {
+      console.log(`❌ Token NOT found for ${domain}`);
+    }
+    
+    return hasToken;
+  } catch (err) {
+    console.log(`DNS lookup failed for ${domain}:`, err.code || err.message);
+    return false;
+  }
+}
+
+function generateVerificationToken(domain) {
+  return `quantum-verify=${crypto.randomBytes(16).toString('hex')}`;
+}
 
 // ============ URL GENERATION FUNCTIONS ============
 
@@ -270,11 +308,53 @@ app.get('/api/domains', async (req, res) => {
 app.post('/api/domains', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
   const { domain } = req.body;
-  const token = `quantum-verify=${crypto.randomBytes(16).toString('hex')}`;
+  const token = generateVerificationToken(domain);
   try {
     await pool.query('INSERT INTO domains (user_id, domain, verification_token) VALUES ($1, $2, $3)', 
       [req.session.userId, domain, token]);
     res.json({ verification_token: token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verify domain - FIXED VERSION
+app.post('/api/domains/:id/verify', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  
+  try {
+    const domainResult = await pool.query('SELECT * FROM domains WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+    const domain = domainResult.rows[0];
+    
+    if (!domain) {
+      return res.status(404).json({ error: 'Domain not found' });
+    }
+    
+    console.log(`Verifying domain: ${domain.domain}`);
+    console.log(`Looking for token: ${domain.verification_token}`);
+    
+    const isValid = await verifyDomainDNS(domain.domain, domain.verification_token);
+    
+    if (isValid) {
+      await pool.query('UPDATE domains SET verified = TRUE, verified_at = CURRENT_TIMESTAMP WHERE id = $1', [domain.id]);
+      res.json({ verified: true, message: 'Domain verified successfully!' });
+    } else {
+      res.json({ 
+        verified: false, 
+        message: 'Verification failed. Make sure you added this exact TXT record to your DNS:\n\n' + domain.verification_token + '\n\nWait 5-10 minutes for DNS propagation, then try again.' 
+      });
+    }
+  } catch (err) {
+    console.error('Verification error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/domains/:id', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await pool.query('DELETE FROM domains WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -286,9 +366,9 @@ app.post('/api/generate', async (req, res) => {
   const { domain_id, subdomain, target_url, style, count } = req.body;
   
   try {
-    const domainResult = await pool.query('SELECT * FROM domains WHERE id = $1 AND user_id = $2', [domain_id, req.session.userId]);
+    const domainResult = await pool.query('SELECT * FROM domains WHERE id = $1 AND user_id = $2 AND verified = TRUE', [domain_id, req.session.userId]);
     const domain = domainResult.rows[0];
-    if (!domain) return res.status(400).json({ error: 'Domain not found' });
+    if (!domain) return res.status(400).json({ error: 'Domain not verified' });
     
     const fullDomain = subdomain ? `${subdomain}.${domain.domain}` : domain.domain;
     const slug = crypto.randomBytes(8).toString('hex');
@@ -356,10 +436,20 @@ app.get('/api/rules', async (req, res) => {
   }
 });
 
+app.delete('/api/rules/:id', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await pool.query('DELETE FROM redirect_rules WHERE id = $1 AND user_id = $2', [req.params.id, req.session.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/stats', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({});
   try {
-    const domains = await pool.query('SELECT COUNT(*) as count FROM domains WHERE user_id = $1', [req.session.userId]);
+    const domains = await pool.query('SELECT COUNT(*) as count FROM domains WHERE user_id = $1 AND verified = TRUE', [req.session.userId]);
     const rules = await pool.query('SELECT COUNT(*) as count FROM redirect_rules WHERE user_id = $1', [req.session.userId]);
     const clicks = await pool.query('SELECT SUM(clicks) as total FROM redirect_rules WHERE user_id = $1', [req.session.userId]);
     res.json({
@@ -369,6 +459,21 @@ app.get('/api/stats', async (req, res) => {
     });
   } catch (err) {
     res.json({ domains: 0, rules: 0, clicks: 0 });
+  }
+});
+
+app.get('/api/logs', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json([]);
+  try {
+    const result = await pool.query(`
+      SELECT l.*, r.full_domain, r.target_url
+      FROM click_logs l
+      LEFT JOIN redirect_rules r ON l.rule_id = r.id
+      ORDER BY l.created_at DESC LIMIT 100
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.json([]);
   }
 });
 
